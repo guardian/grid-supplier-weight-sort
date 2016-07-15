@@ -16,6 +16,6 @@ public class GridSupplierWeightSortPlugin extends AbstractPlugin {
     }
 
     public void onModule(ScriptModule module) {
-        module.registerScript("grid_supplier_weight_sort", GridSupplierWeightSortScript.Factory.class);
+        module.registerScript("grid-supplier-weight-sort", GridSupplierWeightSortScript.Factory.class);
     }
 }
