@@ -1,6 +1,8 @@
 package com.gu.elasticsearch.nativescript.script;
 
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Collections;
 import java.util.Optional;
 
@@ -24,10 +26,39 @@ public class GridSupplierWeightSortScript extends AbstractLongSearchScript {
 
     public static class Factory extends AbstractComponent implements NativeScriptFactory {
         public static final String DEFAULT_DATE_SORT_FIELD = "uploadTime";
+        public static final Map<String, Double> DEFAULT_SUPPLIER_WEIGHTS = Collections.emptyMap();
 
         @Inject
         public Factory(Node node, Settings settings) {
             super(settings);
+        }
+
+        private Map<String,Double> nodeMapStringDoubleValue(@Nullable Object node) {
+            return Optional.ofNullable(node).map((Object n) -> {
+                if(node instanceof Map<?,?>) {
+
+                    @SuppressWarnings("unchecked")
+                    Map<Object,Object> nieveMap = (Map<Object,Object>) n;
+                    Map<String, Double> newMap = new HashMap<String, Double>();
+
+                    Iterator<Map.Entry<Object,Object>> it = nieveMap.entrySet().iterator();
+                    while (it.hasNext()) {
+                        Map.Entry<Object, Object> pair = it.next();
+
+                        Boolean keyIsString = pair.getKey() instanceof String;
+                        Boolean valueIsDouble = pair.getValue() instanceof Double;
+
+                        if (keyIsString && valueIsDouble) {
+                            newMap.put((String) pair.getKey(), (Double) pair.getValue());
+                        }
+                        it.remove();
+                    }
+
+                    return newMap;
+                } else {
+                    return null;
+                }
+            }).orElse(DEFAULT_SUPPLIER_WEIGHTS);
         }
 
         @Override
@@ -39,13 +70,14 @@ public class GridSupplierWeightSortScript extends AbstractLongSearchScript {
                     Optional.ofNullable(p.get("date_sort_field")).map((Object node) ->
                         XContentMapValues.nodeStringValue(node, null)));
 
-            // TODO: This isn't a nullable type - but the eventual impl here will be.
-            Optional<Map<String, Float>> supplierWeighting =
-                Optional.ofNullable(Collections.emptyMap());
+            Optional<Map<String, Double>> supplierWeights =
+                optionalParams.map((Map<String, Object> p) ->
+                    nodeMapStringDoubleValue(p.get("supplier_weights")));
 
             return new GridSupplierWeightSortScript(
                     logger,
-                    dateSortField.orElse(DEFAULT_DATE_SORT_FIELD)
+                    dateSortField.orElse(DEFAULT_DATE_SORT_FIELD),
+                    supplierWeights.orElse(DEFAULT_SUPPLIER_WEIGHTS)
             );
         }
     }
@@ -53,8 +85,14 @@ public class GridSupplierWeightSortScript extends AbstractLongSearchScript {
 
     private final ESLogger logger;
     private final String dateSortField;
+    private final Map<String, Double> supplierWeights;
 
-    private GridSupplierWeightSortScript(ESLogger logger, String dateSortField) {
+    private GridSupplierWeightSortScript(
+            ESLogger logger,
+            String dateSortField,
+            Map<String, Double> supplierWeights) {
+
+        this.supplierWeights = supplierWeights;
         this.logger = logger;
         this.dateSortField = dateSortField;
     }
@@ -76,7 +114,10 @@ public class GridSupplierWeightSortScript extends AbstractLongSearchScript {
             dateValue.map((ScriptDocValues<Long> d) ->
                     ((ScriptDocValues.Longs) d).getValue());
 
-        return dateFieldValue.orElse(0L);
+        final Double weight = 1D + supplierFieldValue.flatMap((String s) ->
+                Optional.ofNullable(supplierWeights.get(s))).orElse(0D);
+
+        return (long) (((double) dateFieldValue.orElse(0L)) * weight);
     }
 
 }
